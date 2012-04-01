@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% load cache %}
+
+{% block more_style %}
+    <style type="text/css">
+        circle.node {
+            stroke: #444;
+            stroke-width: 1px;
+        }
+
+        line.link {
+            stroke: #999;
+            stroke-opacity: .6;
+        }​
+
+        line.link.group {
+            stroke: #228;
+        }
+        line.link.level {
+            stroke: #3c3;
+        }
+        line.link.requirement {
+            stroke: #a22;
+        }
+
+        .tooltip {
+            background: #e0e0e0;
+            background: rgba(230,230,230,0.7);
+            border: 1px solid #bbb;
+            -webkit-opacity: 1;
+            -moz-opacity: 1;
+            -ms-opacity: 1;
+            opacity: 1;
+            -webkit-border-radius: 3px;
+            -moz-border-radius: 3px;
+            -ms-border-radius: 3px;
+            border-radius: 3px;
+        }
+    </style>
+{% endblock %}
+
+{% block title_add %}last updated on {{ date|date:"SHORT_DATE_FORMAT" }}{% endblock %}
+
+{% block content %}
+    <div id="chart"></div>
+{% endblock %}
+
+{% block more_scripts %}
+    {% cache 3600 d3data %}
+    <script type="text/javascript">
+        (function() {
+            var width = 950;
+            var height = 870;
+
+            var linkType = {
+                group: 1,
+                level: 1,
+                requirement: 1
+            };
+
+            var color = d3.scale.category20();
+
+            var force = d3.layout.force()
+                .charge(-8)
+                .linkDistance(2)
+                .size([width, height]);
+
+            var svg = d3.select("#chart").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            var nodes = [];
+            var links = [];
+            var nodeCount = -1;
+            var map = {};
+            {% for group in groups %}
+                nodes.push({name: "{{ group }}", group: {{ group.id }}, id: "g{{ skill.id }}", rank: 60, type: "group" });
+                map["g{{ group.id }}"] = ++nodeCount;
+                {% for skill in group.skills.all %}
+                    nodes.push({name: "{{ skill }}", group: {{ group.id }}, id: "s{{ skill.id }}", rank: {{ skill.rank }}, type: "skill", groupName: "{{ group.name }}" });
+                    map["s{{ skill.id }}"] = ++nodeCount;
+                    links.push({source: map["g{{ group.id }}"], target: map["s{{ skill.id }}"], type: "group"});
+                    {% for level in skill.levels.all %}
+                        nodes.push({name: "{{ level }}", group: {{ group.id }}, id: "sl{{ skill.id }}_{{ level.id }}", rank: {{ skill.rank }}, type: "skill", groupName: "{{ group.name }}" });
+                        map["sl{{ skill.id }}_{{ level.id }}"] = ++nodeCount;
+                        {% if forloop.first %}
+                            links.push({source: map["s{{ skill.id }}"], target: map["sl{{ skill.id }}_{{ level.id }}"], type: "level"});
+                        {% else %}
+                            links.push({source: map["sl{{ skill.id }}_{{ level.previous.id }}"], target: map["sl{{ skill.id }}_{{ level.id }}"], type: "level"});
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+            {% endfor %}
+            {% for group in groups %}
+                {% for skill in group.skills.all %}
+                    {% for required_skill in skill.required_skills.all %}
+                        links.push({source: map["sl{{ required_skill.skill.id }}_{{ required_skill.id }}"], target: map["s{{ skill.id }}"], type: "requirement"});
+                    {% endfor %}
+                {% endfor %}
+            {% endfor %}
+
+            force.nodes(nodes);
+            force.links(links);
+            force.start();
+
+            var tooltip = d3.select("body")
+                .append("div")
+                .attr("class", "tooltip")
+                .style("visibility", "hidden")
+                .text("a simple tooltip");
+
+            var link = svg.selectAll("line.link")
+                .data(links, function(d) {return d.target;})
+                .enter().append("line")
+                .attr("class", function(d) {return "link " + d.type;})
+                .attr("stroke-width", function(d) {return linkType[d.type];});
+
+            var node = svg.selectAll("circle.node")
+                .data(nodes, function(d) {return d.id;})
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", function(d) {return 1.5 + Math.log((d.rank * 2) + 2);})
+                .style("fill", function(d) { return color(d.group); })
+                .call(force.drag)
+                .on("mouseover", function(d) {
+                        var title;
+                        if (d.type == "group") {
+                            title = "<strong>Group: " + d.name + "</strong>";
+                        } else {
+                            title = "<strong>Skill: " + d.name + "</strong><br/>Rank: " + d.rank + "<br/>Group: " + d.groupName;
+                        }
+                        return tooltip.style("visibility", "visible").html(title);
+                    })
+                .on("mousemove", function() {return tooltip.style("top", (event.pageY-10)+"px").style("left",(event.pageX+10)+"px");})
+                .on("mouseout", function() {return tooltip.style("visibility", "hidden");});
+
+            force.on("tick", function() {
+                link.attr("x1", function(d) { return d.source.x; })
+                    .attr("y1", function(d) { return d.source.y; })
+                    .attr("x2", function(d) { return d.target.x; })
+                    .attr("y2", function(d) { return d.target.y; });
+
+                node.attr("cx", function(d) { return d.x; })
+                    .attr("cy", function(d) { return d.y; });
+            });
+        })();
+    </script>
+    {% endcache %}
+{% endblock %}

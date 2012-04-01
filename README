@@ -1,0 +1,8 @@
+EVE Online Skill Tree
+=====================
+
+This is just a quick hack to try out some new stuff (namely django 1.4 and d3.js).
+I got the idea from a reddit thread [1] and thought EVE Online also needs a graphical skill tree.
+
+
+[1] http://www.reddit.com/r/gaming/comments/rm00p/now_this_is_a_fucking_skill_tree/
